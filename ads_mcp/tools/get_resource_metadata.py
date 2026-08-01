@@ -15,14 +15,24 @@
 """Tools for fetching metadata for Google Ads resources."""
 
 from typing import Any, Dict
+import re
 from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 import ads_mcp.utils as utils
 
-metadata_mcp = FastMCP("metadata")
+metadata_mcp = FastMCP("metadata", mask_error_details=True, tasks=False)
+_RESOURCE_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
-@metadata_mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+@metadata_mcp.tool(
+    title="Get Google Ads resource metadata",
+    annotations=ToolAnnotations(
+        readOnlyHint=True,
+        destructiveHint=False,
+        idempotentHint=True,
+        openWorldHint=True,
+    ),
+)
 def get_resource_metadata(resource_name: str) -> Dict[str, Any]:
     """Retrieves the selectable, filterable, and sortable fields for a specific Google Ads resource,
     including compatible metrics and segments.
@@ -40,6 +50,9 @@ def get_resource_metadata(resource_name: str) -> Dict[str, Any]:
     Args:
         resource_name: The name of the Google Ads resource (e.g., 'campaign', 'ad_group').
     """
+    if not _RESOURCE_PATTERN.fullmatch(resource_name):
+        raise ValueError("Invalid Google Ads resource name")
+
     ga_service = utils.get_googleads_service("GoogleAdsFieldService")
     request = utils.get_googleads_type("SearchGoogleAdsFieldsRequest")
 
@@ -61,8 +74,10 @@ def get_resource_metadata(resource_name: str) -> Dict[str, Any]:
                 filterable.add(field.name)
             if field.sortable:
                 sortable.add(field.name)
-    except Exception as e:
-        utils.logger.warning(f"Failed attributes query: {e}")
+    except Exception:
+        utils.logger.warning(
+            "Google Ads attributes query failed; using fallback"
+        )
         # Fallback to original behavior if category filter fails
         fallback_query = f"SELECT name, selectable, filterable, sortable WHERE name LIKE '{resource_name}.%'"
         request.query = fallback_query
@@ -78,11 +93,9 @@ def get_resource_metadata(resource_name: str) -> Dict[str, Any]:
                         filterable.add(field.name)
                     if field.sortable:
                         sortable.add(field.name)
-        except Exception as e2:
-            utils.logger.error(f"Fallback attributes query failed: {e2}")
-            raise RuntimeError(
-                f"API call to search_google_ads_fields failed: {e2}"
-            )
+        except Exception:
+            utils.logger.error("Google Ads attributes fallback query failed")
+            raise RuntimeError("Google Ads metadata request failed") from None
 
     # Query 2: Get selectable metrics and segments
     metrics_segments_query = f"SELECT name, selectable, filterable, sortable WHERE selectable_with CONTAINS ANY('{resource_name}')"
@@ -98,8 +111,8 @@ def get_resource_metadata(resource_name: str) -> Dict[str, Any]:
                 filterable.add(field.name)
             if field.sortable:
                 sortable.add(field.name)
-    except Exception as e:
-        utils.logger.warning(f"Failed metrics/segments query: {e}")
+    except Exception:
+        utils.logger.warning("Google Ads metrics and segments query failed")
 
     return {
         "resource": resource_name,

@@ -102,11 +102,21 @@ To enable it, set the following environment variables:
 
 - `GOOGLE_ADS_MCP_OAUTH_CLIENT_ID`: Your Google Cloud OAuth 2.0 Client ID.
 - `GOOGLE_ADS_MCP_OAUTH_CLIENT_SECRET`: Your Google Cloud OAuth 2.0 Client Secret.
-- `GOOGLE_ADS_MCP_BASE_URL`: (Optional) The base URL where the server is accessible (defaults to `http://localhost:8080`).
+- `GOOGLE_ADS_MCP_BASE_URL`: The public origin where the server is accessible,
+  without `/mcp` (for example, `https://google-ads-mcp.example.com`). HTTPS is
+  required except for loopback development.
+- `OAUTH_JWT_SIGNING_KEY`: A random secret with at least 32 characters, used
+  only for signing the OAuth proxy's tokens.
+- `OAUTH_STORAGE_BACKEND`: Use `memory` only for local loopback development.
+  Hosted deployments must use `redis`.
+- `REDIS_URL`: Required for Redis-backed OAuth storage.
+- `OAUTH_STORAGE_ENCRYPTION_KEY`: A Fernet key used to encrypt OAuth records
+  before they are written to Redis.
 
 Once this is enabled, you can authenticate to the API through your MCP client.
 
-When these variables are set, the server automatically switches to the `streamable-http` transport (SSE/HTTP) instead of `stdio`.
+The hosted entry point starts the `streamable-http` transport and fails closed
+if OAuth or the Google Ads developer token is missing.
 
 You will need to run the server as a separate process and configure your MCP client to connect to the SSE endpoint (e.g., `http://localhost:8080/mcp`).
 
@@ -281,6 +291,65 @@ The final file will look like this:
 #### Other MCP clients (Claude Code, Cursor, VS Code, etc.)
 
 The `mcpServers` block format is the same across all MCP clients. Add the configuration shown above to the appropriate settings file for your client (e.g., `~/.claude/settings.json` for Claude Code, `.cursor/mcp.json` for Cursor, `.vscode/mcp.json` for VS Code with Copilot).
+
+## Deployment to Railway
+
+This fork is prepared to run as a separate Railway service in the same project
+as other MCP services. It can reuse an existing private Redis instance while
+keeping its OAuth records in the `google-ads-mcp-oauth` collection. Use a
+different `OAUTH_STORAGE_ENCRYPTION_KEY` for every MCP service.
+
+### Endpoints
+
+- MCP: `/mcp` (OAuth required)
+- Health: `/health` (public, returns only `ok`)
+- Google OAuth callback: `/auth/callback`
+
+### Required Railway variables
+
+| Variable | Purpose |
+| --- | --- |
+| `GOOGLE_ADS_DEVELOPER_TOKEN` | Server-side Google Ads API developer token. |
+| `GOOGLE_ADS_MCP_OAUTH_CLIENT_ID` | Google OAuth 2.0 Web Application client ID. |
+| `GOOGLE_ADS_MCP_OAUTH_CLIENT_SECRET` | Google OAuth client secret. |
+| `GOOGLE_ADS_MCP_BASE_URL` | Public Railway origin, without `/mcp`. |
+| `OAUTH_JWT_SIGNING_KEY` | Random secret of at least 32 characters. |
+| `OAUTH_STORAGE_BACKEND` | Set to `redis`. |
+| `REDIS_URL` | Reference to the private Railway Redis URL. |
+| `OAUTH_STORAGE_ENCRYPTION_KEY` | Service-specific Fernet encryption key. |
+
+Optional variables:
+
+- `GOOGLE_ADS_LOGIN_CUSTOMER_ID`: Manager account ID, exactly 10 digits without
+  hyphens.
+- `GOOGLE_ADS_MCP_MAX_ROWS`: Maximum rows returned by one search call; defaults
+  to `5000` and may be set from `1` to `100000`.
+- `MCP_ALLOWED_REDIRECT_URIS`: Comma-separated MCP client callbacks. Production
+  defaults to Claude's callback only.
+- `GOOGLE_ADS_MCP_TOOLS_CONFIG`: Path to a custom tool configuration file.
+
+`PORT` is supplied by Railway. The Docker image binds to `0.0.0.0`, reads that
+port automatically, runs as a non-root user, and already contains the start
+command. No Railway Start Command override is required.
+
+### First deployment order
+
+1. Add a new service from this GitHub repository and attach the existing Redis
+   service through a `REDIS_URL` reference variable.
+2. Add placeholder-safe configuration and generate the Railway domain. The
+   service may remain unhealthy until its public URL and OAuth settings exist.
+3. Set `GOOGLE_ADS_MCP_BASE_URL` to the generated HTTPS origin.
+4. In Google Cloud Console create an OAuth 2.0 **Web application** and add the
+   exact authorized redirect URI
+   `https://YOUR_RAILWAY_DOMAIN/auth/callback`.
+5. Store the OAuth client ID and secret in Railway, then redeploy.
+6. Configure the Railway health check path as `/health`.
+7. Add `https://YOUR_RAILWAY_DOMAIN/mcp` as a custom connector in Claude.
+
+The OAuth proxy uses each connecting user's Google authorization. There is no
+read-only Google Ads OAuth scope, so read-only behavior is enforced by the
+three tools exposed by this server. Do not add mutation tools without a new
+security review.
 
 ## Deployment to Google Cloud Platform
 

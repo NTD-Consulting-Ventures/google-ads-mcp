@@ -19,29 +19,37 @@ server using `@mcp.tool` annotations, thereby 'coordinating' the bootstrapping
 of the server.
 """
 
-import os
 from fastmcp import FastMCP
-from fastmcp.server.auth.providers.google import GoogleProvider
+from mcp.types import Icon
+from starlette.requests import Request
+from starlette.responses import PlainTextResponse
 
-_CLIENT_ID = os.environ.get("GOOGLE_ADS_MCP_OAUTH_CLIENT_ID")
-_CLIENT_SECRET = os.environ.get("GOOGLE_ADS_MCP_OAUTH_CLIENT_SECRET")
-_BASE_URL = os.environ.get("GOOGLE_ADS_MCP_BASE_URL", "http://localhost:8080")
+from ads_mcp.auth_config import build_google_provider, oauth_is_configured
 
-if _CLIENT_ID and _CLIENT_SECRET:
-    auth = GoogleProvider(
-        client_id=_CLIENT_ID,
-        client_secret=_CLIENT_SECRET,
-        base_url=_BASE_URL,
-        required_scopes=[
-            "openid",
-            "https://www.googleapis.com/auth/userinfo.email",
-            "https://www.googleapis.com/auth/userinfo.profile",
-            "https://www.googleapis.com/auth/adwords",
-        ],
-    )
-    mcp = FastMCP("Google Ads Server", auth=auth)
-else:
-    mcp = FastMCP("Google Ads Server")
+auth = build_google_provider() if oauth_is_configured() else None
+mcp = FastMCP(
+    "Naturbummler Google Ads",
+    website_url="https://naturbummler.de",
+    icons=[
+        Icon(
+            src=(
+                "https://naturbummler.de/cdn/shop/files/"
+                "1000x628px_Logo_1000x628.png"
+            ),
+            mimeType="image/png",
+            sizes=["1000x628"],
+        )
+    ],
+    auth=auth,
+    mask_error_details=True,
+    tasks=False,
+)
+
+
+@mcp.custom_route("/health", methods=["GET"], include_in_schema=False)
+async def health_check(request: Request) -> PlainTextResponse:
+    """Return a minimal unauthenticated liveness response for Railway."""
+    return PlainTextResponse("ok")
 
 
 def initialize_and_mount_tools(parent_mcp: FastMCP) -> None:
