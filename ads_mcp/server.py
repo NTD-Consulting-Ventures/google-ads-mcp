@@ -49,7 +49,10 @@ def _validate_hosted_configuration() -> None:
     if not oauth_is_configured() or mcp.auth is None:
         raise RuntimeError("OAuth is required for the hosted MCP server")
     if not os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN", "").strip():
-        raise RuntimeError("GOOGLE_ADS_DEVELOPER_TOKEN is required")
+        logger.warning(
+            "Google Ads developer token is not configured; "
+            "API tools remain unavailable"
+        )
 
 
 def run_server() -> None:

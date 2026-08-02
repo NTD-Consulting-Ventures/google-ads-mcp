@@ -309,7 +309,7 @@ different `OAUTH_STORAGE_ENCRYPTION_KEY` for every MCP service.
 
 | Variable | Purpose |
 | --- | --- |
-| `GOOGLE_ADS_DEVELOPER_TOKEN` | Server-side Google Ads API developer token. |
+| `GOOGLE_ADS_DEVELOPER_TOKEN` | Server-side Google Ads API developer token. OAuth and health work without it, but Ads tool calls require it. |
 | `GOOGLE_ADS_MCP_OAUTH_CLIENT_ID` | Google OAuth 2.0 Web Application client ID. |
 | `GOOGLE_ADS_MCP_OAUTH_CLIENT_SECRET` | Google OAuth client secret. |
 | `GOOGLE_ADS_MCP_BASE_URL` | Public Railway origin, without `/mcp`. |

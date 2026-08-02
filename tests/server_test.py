@@ -61,3 +61,10 @@ class TestUtils(unittest.TestCase):
         with patch.dict("os.environ", {"PORT": "70000"}):
             with self.assertRaisesRegex(RuntimeError, "between 1 and 65535"):
                 server._port_from_env()
+
+    def test_missing_developer_token_does_not_block_oauth_server(self):
+        from ads_mcp import server
+        from unittest.mock import patch
+
+        with patch.dict("os.environ", {"GOOGLE_ADS_DEVELOPER_TOKEN": ""}):
+            server._validate_hosted_configuration()
