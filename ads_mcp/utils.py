@@ -34,6 +34,7 @@ import importlib.resources
 import contextlib
 import subprocess
 from unittest.mock import patch
+import re
 
 # filename for generated field information used by search
 _GAQL_FILENAME = "gaql_resources.txt"
@@ -46,6 +47,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 # read-only scope; access is restricted to read methods by the tools this
 # server exposes (see ads_mcp/tools/).
 _ADS_SCOPE = "https://www.googleapis.com/auth/adwords"
+_CUSTOMER_ID_PATTERN = re.compile(r"^[0-9]{10}$")
 
 
 @contextlib.contextmanager
@@ -84,8 +86,8 @@ def _create_credentials() -> google.auth.credentials.Credentials:
 
 def _get_developer_token() -> str:
     """Returns the developer token from the environment variable GOOGLE_ADS_DEVELOPER_TOKEN."""
-    dev_token = os.environ.get("GOOGLE_ADS_DEVELOPER_TOKEN")
-    if dev_token is None:
+    dev_token = os.environ.get("GOOGLE_ADS_DEVELOPER_TOKEN", "").strip()
+    if not dev_token:
         raise ValueError(
             "GOOGLE_ADS_DEVELOPER_TOKEN environment variable not set."
         )
@@ -94,7 +96,12 @@ def _get_developer_token() -> str:
 
 def _get_login_customer_id() -> str | None:
     """Returns login customer id, if set, from the environment variable GOOGLE_ADS_LOGIN_CUSTOMER_ID."""
-    return os.environ.get("GOOGLE_ADS_LOGIN_CUSTOMER_ID")
+    customer_id = os.environ.get("GOOGLE_ADS_LOGIN_CUSTOMER_ID", "").strip()
+    if not customer_id:
+        return None
+    if not _CUSTOMER_ID_PATTERN.fullmatch(customer_id):
+        raise ValueError("GOOGLE_ADS_LOGIN_CUSTOMER_ID is not valid")
+    return customer_id
 
 
 def _get_googleads_client() -> GoogleAdsClient:

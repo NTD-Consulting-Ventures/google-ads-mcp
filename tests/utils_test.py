@@ -15,6 +15,7 @@
 """Test cases for the utils module."""
 
 import unittest
+from unittest.mock import patch
 from google.ads.googleads.v24.enums.types.campaign_status import (
     CampaignStatusEnum,
 )
@@ -100,3 +101,10 @@ class TestUtils(unittest.TestCase):
                 subprocess.Popen(["mock_cmd"], stdin=subprocess.PIPE)
 
         mock_popen.assert_called_once_with(["mock_cmd"], stdin=subprocess.PIPE)
+
+    def test_login_customer_id_must_be_ten_digits(self):
+        with patch.dict(
+            "os.environ", {"GOOGLE_ADS_LOGIN_CUSTOMER_ID": "123-456-7890"}
+        ):
+            with self.assertRaisesRegex(ValueError, "not valid"):
+                utils._get_login_customer_id()

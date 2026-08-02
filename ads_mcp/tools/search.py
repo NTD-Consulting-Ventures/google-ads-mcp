@@ -15,15 +15,34 @@
 """Tools for exposing the API Search method to the MCP server."""
 
 from typing import Any, Dict, List
+import os
+import re
+
 from fastmcp import FastMCP
+from fastmcp.exceptions import ToolError
 from fastmcp.tools import Tool
+from google.ads.googleads.errors import GoogleAdsException
 from mcp.types import ToolAnnotations
 
-search_mcp = FastMCP("search")
-
 import ads_mcp.utils as utils
-from google.ads.googleads.errors import GoogleAdsException
-from fastmcp.exceptions import ToolError
+
+search_mcp = FastMCP("search", mask_error_details=True, tasks=False)
+
+_CUSTOMER_ID_PATTERN = re.compile(r"^[0-9]{10}$")
+_RESOURCE_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
+
+
+def _maximum_rows() -> int:
+    raw_value = os.getenv("GOOGLE_ADS_MCP_MAX_ROWS", "5000").strip()
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise ToolError(
+            "Google Ads row limit is not configured correctly"
+        ) from exc
+    if not 1 <= value <= 100_000:
+        raise ToolError("Google Ads row limit is not configured correctly")
+    return value
 
 
 def search(
@@ -46,6 +65,16 @@ def search(
 
     """
 
+    if not _CUSTOMER_ID_PATTERN.fullmatch(customer_id):
+        raise ToolError("customer_id must contain exactly 10 digits")
+    if not _RESOURCE_PATTERN.fullmatch(resource):
+        raise ToolError("resource is not a valid Google Ads resource name")
+
+    maximum_rows = _maximum_rows()
+    if limit is not None and limit < 1:
+        raise ToolError("limit must be greater than zero")
+    effective_limit = min(limit or maximum_rows, maximum_rows)
+
     ga_service = utils.get_googleads_service("GoogleAdsService")
 
     query_parts = [f"SELECT {','.join(fields)} FROM {resource}"]
@@ -56,13 +85,12 @@ def search(
     if orderings:
         query_parts.append(f" ORDER BY {','.join(orderings)}")
 
-    if limit:
-        query_parts.append(f" LIMIT {limit}")
+    query_parts.append(f" LIMIT {effective_limit}")
 
     query_parts.append(" PARAMETERS omit_unselected_resource_names=true")
 
     query = "".join(query_parts)
-    utils.logger.info(f"ads_mcp.search query {query}")
+    utils.logger.info("Executing a bounded Google Ads search")
 
     try:
         query_result = ga_service.search_stream(
@@ -142,5 +170,14 @@ def _search_tool_description() -> str:
 # including the `search` method's docstring.
 search.__doc__ = _search_tool_description()
 search_mcp.add_tool(
-    Tool.from_function(search, annotations=ToolAnnotations(readOnlyHint=True))
+    Tool.from_function(
+        search,
+        title="Search Google Ads data",
+        annotations=ToolAnnotations(
+            readOnlyHint=True,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=True,
+        ),
+    )
 )

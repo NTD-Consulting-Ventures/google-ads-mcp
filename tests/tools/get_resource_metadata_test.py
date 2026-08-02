@@ -146,10 +146,16 @@ class TestGetResourceMetadata(unittest.TestCase):
         with self.assertRaises(RuntimeError) as cm:
             get_resource_metadata.get_resource_metadata("campaign")
 
-        self.assertIn(
-            "API call to search_google_ads_fields failed: Fail 2",
-            str(cm.exception),
+        self.assertEqual(
+            "Google Ads metadata request failed", str(cm.exception)
         )
+
+    @patch("ads_mcp.utils.get_googleads_service")
+    def test_invalid_resource_name_is_rejected(self, mock_get_service):
+        with self.assertRaisesRegex(ValueError, "Invalid"):
+            get_resource_metadata.get_resource_metadata("campaign' OR true")
+
+        mock_get_service.assert_not_called()
 
 
 if __name__ == "__main__":

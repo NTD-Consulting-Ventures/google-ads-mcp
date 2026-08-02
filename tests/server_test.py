@@ -16,6 +16,8 @@
 
 import unittest
 
+from starlette.testclient import TestClient
+
 
 class TestUtils(unittest.TestCase):
     """Test cases for the server module."""
@@ -29,3 +31,40 @@ class TestUtils(unittest.TestCase):
         from ads_mcp import server
 
         self.assertIsNotNone(server.mcp, "MCP server instance not initialized")
+
+    def test_health_is_public_and_minimal(self):
+        from ads_mcp import server
+
+        with TestClient(
+            server.mcp.http_app(path="/mcp", stateless_http=True)
+        ) as client:
+            response = client.get("/health")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.text, "ok")
+
+    def test_branding_metadata(self):
+        from ads_mcp import server
+
+        self.assertEqual(server.mcp.name, "Naturbummler Google Ads")
+        self.assertEqual(server.mcp.website_url, "https://naturbummler.de")
+        self.assertEqual(
+            str(server.mcp.icons[0].src),
+            "https://naturbummler.de/cdn/shop/files/"
+            "1000x628px_Logo_1000x628.png",
+        )
+
+    def test_invalid_port_is_rejected(self):
+        from ads_mcp import server
+        from unittest.mock import patch
+
+        with patch.dict("os.environ", {"PORT": "70000"}):
+            with self.assertRaisesRegex(RuntimeError, "between 1 and 65535"):
+                server._port_from_env()
+
+    def test_missing_developer_token_does_not_block_oauth_server(self):
+        from ads_mcp import server
+        from unittest.mock import patch
+
+        with patch.dict("os.environ", {"GOOGLE_ADS_DEVELOPER_TOKEN": ""}):
+            server._validate_hosted_configuration()

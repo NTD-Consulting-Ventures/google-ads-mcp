@@ -135,3 +135,48 @@ class TestSearch(unittest.TestCase):
             "Google Ads API Error: Invalid field name", str(context.exception)
         )
         self.assertIn("Request ID: req-123", str(context.exception))
+
+    @patch("ads_mcp.utils.get_googleads_service")
+    def test_search_adds_default_safety_limit(self, mock_get_service):
+        mock_service = MagicMock()
+        mock_service.search_stream.return_value = []
+        mock_get_service.return_value = mock_service
+
+        search.search(
+            customer_id="1234567890",
+            fields=["campaign.id"],
+            resource="campaign",
+        )
+
+        query = mock_service.search_stream.call_args.kwargs["query"]
+        self.assertIn(" LIMIT 5000 ", query)
+
+    @patch("ads_mcp.utils.get_googleads_service")
+    def test_search_clamps_requested_limit(self, mock_get_service):
+        mock_service = MagicMock()
+        mock_service.search_stream.return_value = []
+        mock_get_service.return_value = mock_service
+
+        with patch.dict("os.environ", {"GOOGLE_ADS_MCP_MAX_ROWS": "100"}):
+            search.search(
+                customer_id="1234567890",
+                fields=["campaign.id"],
+                resource="campaign",
+                limit=1000,
+            )
+
+        query = mock_service.search_stream.call_args.kwargs["query"]
+        self.assertIn(" LIMIT 100 ", query)
+
+    @patch("ads_mcp.utils.get_googleads_service")
+    def test_search_rejects_invalid_resource(self, mock_get_service):
+        from fastmcp.exceptions import ToolError
+
+        with self.assertRaisesRegex(ToolError, "resource"):
+            search.search(
+                customer_id="1234567890",
+                fields=["campaign.id"],
+                resource="campaign LIMIT 100000",
+            )
+
+        mock_get_service.assert_not_called()

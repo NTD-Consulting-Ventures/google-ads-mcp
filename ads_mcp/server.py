@@ -12,8 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Entry point for the MCP server."""
+"""Entry point for the hosted MCP server."""
 
+import logging
+import os
+
+from ads_mcp.auth_config import oauth_is_configured
 from ads_mcp.coordinator import mcp
 
 # The following imports are necessary to register the resources with the `mcp`
@@ -28,24 +32,51 @@ from ads_mcp.resources import (
     segments,
 )  # noqa: F401
 
+logger = logging.getLogger(__name__)
 
-import os
+
+def _port_from_env() -> int:
+    try:
+        port = int(os.getenv("PORT", "8080"))
+    except ValueError as exc:
+        raise RuntimeError("PORT must be an integer") from exc
+    if not 1 <= port <= 65535:
+        raise RuntimeError("PORT must be between 1 and 65535")
+    return port
+
+
+def _validate_hosted_configuration() -> None:
+    if not oauth_is_configured() or mcp.auth is None:
+        raise RuntimeError("OAuth is required for the hosted MCP server")
+    if not os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN", "").strip():
+        logger.warning(
+            "Google Ads developer token is not configured; "
+            "API tools remain unavailable"
+        )
 
 
 def run_server() -> None:
-    _CLIENT_ID = os.environ.get("GOOGLE_ADS_MCP_OAUTH_CLIENT_ID")
-    _CLIENT_SECRET = os.environ.get("GOOGLE_ADS_MCP_OAUTH_CLIENT_SECRET")
-    port = int(os.environ.get("PORT", "8080"))
-
-    if _CLIENT_ID and _CLIENT_SECRET:
+    try:
+        _validate_hosted_configuration()
+        port = _port_from_env()
+        logger.info("Starting Google Ads MCP server on configured HTTP port")
         mcp.run(
-            transport="streamable-http",
+            transport="http",
             port=port,
             host="0.0.0.0",
-            uvicorn_config={"access_log": False},
+            path="/mcp",
+            show_banner=False,
+            stateless_http=True,
+            uvicorn_config={
+                "access_log": False,
+                "server_header": False,
+            },
         )
-    else:
-        mcp.run()
+    except KeyboardInterrupt:
+        logger.info("Google Ads MCP server stopped")
+    except Exception:
+        logger.error("Google Ads MCP server failed to start")
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":

@@ -24,10 +24,18 @@ from google.ads.googleads.v24.services.types.customer_service import (
     ListAccessibleCustomersResponse,
 )
 
-customers_mcp = FastMCP("customers")
+customers_mcp = FastMCP("customers", mask_error_details=True, tasks=False)
 
 
-@customers_mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+@customers_mcp.tool(
+    title="List accessible Google Ads customers",
+    annotations=ToolAnnotations(
+        readOnlyHint=True,
+        destructiveHint=False,
+        idempotentHint=True,
+        openWorldHint=True,
+    ),
+)
 def list_accessible_customers() -> List[str]:
     """Returns ids of customers directly accessible by the user authenticating the call.
 
